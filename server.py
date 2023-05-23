@@ -615,7 +615,9 @@ async def cvelookup(api_key: Optional[str] = Header(None, alias="X-API-KEY")):
         print("check spelling bro", e)
     return(resdict)
 @app.get('/xxelookup')
-def xxelookup():
+async def xxelookup(api_key: Optional[str] = Header(None, alias="X-API-KEY")):
+    await authenticate_api_key(api_key)
+
     xxedict = {}
     url = 'https://'+wd
     xml_payload = '<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE foo [<!ELEMENT foo ANY><!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>'
@@ -643,7 +645,8 @@ def xxelookup():
     return(xxedict)
 
 @app.get("/sqlinjection")
-def getsqli():
+async def getsqli(api_key: Optional[str] = Header(None, alias="X-API-KEY")):
+    await authenticate_api_key(api_key)
     s = requests.Session()
     s.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
     sqlidict={}
